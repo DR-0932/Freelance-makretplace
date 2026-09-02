@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  client
+  freelancer
+}
+
+enum ProposalStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum ContractStatus {
+  active
+  completed
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+}
+
+enum ProjectStatus {
+  open
+  in_progress
+  completed
+  cancelled
+} 
+
+model User {
+  id       String @id @default(uuid())
+  username String @unique
+  email    String @unique
+  name     String
+  password String
+  role     Role
+
+  clientContracts     Contract[] @relation("ClientContract")
+  freelancerContracts Contract[] @relation("FreelancerContract")
+
+  projects  Project[]
+  proposals Proposal[]
+}
+
+model Contract {
+  id            String @id @default(uuid())
+
+  clientId      String
+  client        User   @relation("ClientContract", fields: [clientId], references: [id])
+
+  freelancerId  String
+  freelancer    User   @relation("FreelancerContract", fields: [freelancerId], references: [id])
+
+  projectId     String
+  project       Project @relation(fields: [projectId], references: [id])
+
+  proposalId String   @unique
+  proposal   Proposal @relation(fields: [proposalId], references: [id])
+
+  status ContractStatus @default(active)
+
+
+  startDate DateTime @default(now())
+  endDate   DateTime @default(now())
+
+  payment Payment[]
+}
+
+model Project {
+  id          String @id @default(uuid())
+  title       String
+  description String
+  category    String
+  budgetMin   Float
+  budgetMax   Float
+  deadline    DateTime
+  status      ProjectStatus @default(open)
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id])
+
+  contracts Contract[]
+  proposals Proposal[]
+
+  startDate DateTime @default(now())
+  endDate   DateTime @default(now())
+}
+
+
+model Proposal {
+  id String @id @default(uuid())
+
+  coverLetter        String
+  proposedPrice       Float
+  estimatedDuration  String
+  status             ProposalStatus @default(pending)
+
+  freelancerId String
+  freelancer   User   @relation(fields: [freelancerId], references: [id])
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  contract Contract?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model Payment {
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  amount     Float
+  status     PaymentStatus @default(pending)
+  createdAt  DateTime @default(now())
+}
+
