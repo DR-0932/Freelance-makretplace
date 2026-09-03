@@ -1,471 +1,339 @@
-import { useState, useRef } from "react";
-import { CheckCircle2, AlertCircle, Loader2, PenLine } from "lucide-react";
+import React, { useReducer, ChangeEvent, FormEvent } from 'react';
+import { AlertCircle, CheckCircle, FolderPlus, ArrowRight, RefreshCw, X } from 'lucide-react';
 
-const MIN_LETTER_LENGTH = 100;
-const DURATION_UNITS = ["days", "weeks", "months"];
 
-export default function SubmitProposalForm() {
-  const [coverLetter, setCoverLetter] = useState("");
-  const [price, setPrice] = useState("");
-  const [durationValue, setDurationValue] = useState("");
-  const [durationUnit, setDurationUnit] = useState("weeks");
+type Category = 'web' | 'mobile' | 'design' | 'marketing';
 
-  const [touched, setTouched] = useState({});
-  const [status, setStatus] = useState("idle"); // idle | submitting | success | error
-  const [serverError, setServerError] = useState("");
-  const formTopRef = useRef(null);
+interface FormValues {
+  name: string;
+  description: string;
+  category: Category;
+  budget: string; 
+}
 
-  const errors = {
-    coverLetter:
-      coverLetter.trim().length === 0
-        ? "Write a cover letter before sending your proposal."
-        : coverLetter.trim().length < MIN_LETTER_LENGTH
-        ? `Add a bit more detail — ${MIN_LETTER_LENGTH - coverLetter.trim().length} more characters needed.`
-        : "",
-    price:
-      price === ""
-        ? "Enter what you'd charge for this work."
-        : Number(price) <= 0
-        ? "Price must be more than $0."
-        : "",
-    duration:
-      durationValue === ""
-        ? "Enter how long this will take."
-        : Number(durationValue) <= 0
-        ? "Duration must be more than 0."
-        : "",
-  };
+type FormErrors = Partial<Record<keyof FormValues, string>>;
 
-  const hasErrors = Object.values(errors).some(Boolean);
+interface CreatedProject extends FormValues {
+  id: string;
+  createdAt: string;
+}
 
-  function markAllTouched() {
-    setTouched({ coverLetter: true, price: true, duration: true });
+interface FormState {
+  values: FormValues;
+  errors: FormErrors;
+  apiError: string | null;
+  isSubmitting: boolean;
+  createdProject: CreatedProject | null;
+}
+
+type FormAction =
+  | { type: 'SET_FIELD'; field: keyof FormValues; value: string }
+  | { type: 'SET_ERRORS'; errors: FormErrors }
+  | { type: 'SUBMIT_START' }
+  | { type: 'SUBMIT_SUCCESS'; payload: CreatedProject }
+  | { type: 'SUBMIT_FAILURE'; error: string }
+  | { type: 'CLEAR_API_ERROR' }
+  | { type: 'RESET_SUCCESS' };
+
+const initialState: FormState = {
+  values: { name: '', description: '', category: 'web', budget: '' },
+  errors: {},
+  apiError: null,
+  isSubmitting: false,
+  createdProject: null,
+};
+
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'SET_FIELD':
+      return {
+        ...state,
+        values: { ...state.values, [action.field]: action.value },
+        errors: { ...state.errors, [action.field]: undefined },
+      };
+    case 'SET_ERRORS':
+      return { ...state, errors: action.errors };
+    case 'SUBMIT_START':
+      return { ...state, isSubmitting: true, apiError: null };
+    case 'SUBMIT_SUCCESS':
+      return { ...initialState, createdProject: action.payload };
+    case 'SUBMIT_FAILURE':
+      return { ...state, isSubmitting: false, apiError: action.error };
+    case 'CLEAR_API_ERROR':
+      return { ...state, apiError: null };
+    case 'RESET_SUCCESS':
+      return { ...state, createdProject: null };
+    default:
+      return state;
+  }
+}
+
+
+function validate(values: FormValues): FormErrors {
+  const errors: FormErrors = {};
+  const budgetNumber = Number(values.budget);
+
+  if (!values.name.trim()) errors.name = 'Project name is required.';
+
+  if (!values.description.trim()) {
+    errors.description = 'Description is required.';
+  } else if (values.description.trim().length < 10) {
+    errors.description = 'Description must be at least 10 characters.';
   }
 
-  async function handleSubmit(e) {
+  if (!values.budget.trim() || Number.isNaN(budgetNumber) || budgetNumber <= 0) {
+    errors.budget = 'Please enter a valid positive budget amount.';
+  }
+
+  return errors;
+}
+
+
+function createProject(values: FormValues): Promise<CreatedProject> {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (Math.random() < 0.25) {
+        reject(new Error('Failed to create project on the server. Please check your network connection and try again.'));
+        return;
+      }
+      resolve({
+        ...values,
+        id: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: new Date().toLocaleDateString(),
+      });
+    }, 1000);
+  });
+}
+
+
+interface FieldProps {
+  id: string;
+  label: string;
+  required?: boolean;
+  error?: string;
+  children: React.ReactNode;
+}
+
+function Field({ id, label, required, error, children }: FieldProps) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      {children}
+      {error && (
+        <p id={`${id}-error`} className="text-xs text-red-500 mt-1">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const inputClasses = (hasError?: string) =>
+  `w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-colors disabled:bg-gray-50 ${
+    hasError ? 'border-red-500 focus:ring-red-200' : 'border-gray-300 focus:ring-indigo-200 focus:border-indigo-500'
+  }`;
+
+
+export default function CreateProjectForm() {
+  const [state, dispatch] = useReducer(formReducer, initialState);
+  const { values, errors, apiError, isSubmitting, createdProject } = state;
+
+  const handleChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    dispatch({ type: 'SET_FIELD', field: name as keyof FormValues, value });
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    markAllTouched();
-    if (hasErrors) {
-      formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    const validationErrors = validate(values);
+    if (Object.keys(validationErrors).length > 0) {
+      dispatch({ type: 'SET_ERRORS', errors: validationErrors });
       return;
     }
 
-    setStatus("submitting");
-    setServerError("");
-
+    dispatch({ type: 'SUBMIT_START' });
     try {
-      await new Promise((resolve, reject) =>
-        setTimeout(() => {
-          // Simulated network call — occasionally fails to demonstrate the error state.
-          if (Math.random() < 0.2) {
-            reject(new Error("The connection dropped before the proposal could be sent."));
-          } else {
-            resolve();
-          }
-        }, 1100)
-      );
-      setStatus("success");
+      const project = await createProject(values);
+      dispatch({ type: 'SUBMIT_SUCCESS', payload: project });
     } catch (err) {
-      setServerError(err.message);
-      setStatus("error");
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      dispatch({ type: 'SUBMIT_FAILURE', error: message });
     }
-  }
-
-  function handleReset() {
-    setCoverLetter("");
-    setPrice("");
-    setDurationValue("");
-    setDurationUnit("weeks");
-    setTouched({});
-    setStatus("idle");
-    setServerError("");
-  }
-
-  if (status === "success") {
-    return (
-      <div style={styles.page}>
-        <div style={styles.card}>
-          <div style={styles.successWrap}>
-            <CheckCircle2 size={40} color={C.success} strokeWidth={1.75} />
-            <h1 style={styles.successHeading}>Proposal sent</h1>
-            <p style={styles.successBody}>
-              Your cover letter, ${Number(price).toLocaleString()} rate, and {durationValue}{" "}
-              {durationUnit} timeline are on their way to the client. You'll hear back once they've
-              reviewed it.
-            </p>
-            <button type="button" style={styles.secondaryButton} onClick={handleReset}>
-              Submit another proposal
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card} ref={formTopRef}>
-        <header style={styles.header}>
-          <PenLine size={20} color={C.accent} strokeWidth={1.75} />
-          <h1 style={styles.heading}>Submit a proposal</h1>
-          <p style={styles.subheading}>
-            Introduce yourself, name your price, and say how long the work will take.
-          </p>
-        </header>
+    <div className="max-w-2xl mx-auto my-10 p-6 bg-white rounded-xl shadow-md border border-gray-100">
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+        <FolderPlus className="w-7 h-7 text-indigo-600" aria-hidden="true" />
+        <h2 className="text-2xl font-bold text-gray-800">Create New Project</h2>
+      </div>
 
-        <div style={styles.rule} />
-
-        {status === "error" && (
-          <div style={styles.errorBanner} role="alert">
-            <AlertCircle size={18} color={C.error} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
+      {apiError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r flex items-start justify-between gap-3"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <div style={styles.errorBannerTitle}>Your proposal wasn't sent</div>
-              <div style={styles.errorBannerBody}>{serverError} Check your details and try again.</div>
+              <h3 className="text-sm font-semibold text-red-800">Submission Failed</h3>
+              <p className="text-sm text-red-700 mt-1">{apiError}</p>
             </div>
           </div>
-        )}
-
-        {hasErrors && Object.values(touched).some(Boolean) && status !== "submitting" && (
-          <div style={styles.errorBanner} role="alert">
-            <AlertCircle size={18} color={C.error} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div>
-              <div style={styles.errorBannerTitle}>Fix the fields below to continue</div>
-            </div>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} noValidate>
-          <Field
-            label="Cover letter"
-            hint={`${coverLetter.trim().length} / ${MIN_LETTER_LENGTH}+ characters`}
-            error={touched.coverLetter ? errors.coverLetter : ""}
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'CLEAR_API_ERROR' })}
+            className="text-red-400 hover:text-red-600 focus:outline-none"
+            aria-label="Dismiss error"
           >
-            <textarea
-              style={{
-                ...styles.textarea,
-                ...(touched.coverLetter && errors.coverLetter ? styles.inputError : {}),
-              }}
-              value={coverLetter}
-              onChange={(e) => setCoverLetter(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, coverLetter: true }))}
-              placeholder="Explain why you're a fit for this work — relevant experience, how you'd approach it, and what makes your proposal worth reading."
-              rows={7}
-            />
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <Field id="project-name" label="Project Name" required error={errors.name}>
+          <input
+            id="project-name"
+            type="text"
+            name="name"
+            disabled={isSubmitting}
+            value={values.name}
+            onChange={handleChange}
+            placeholder="e.g., Mobile Banking App Redesign"
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? 'project-name-error' : undefined}
+            className={inputClasses(errors.name)}
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field id="project-category" label="Category">
+            <select
+              id="project-category"
+              name="category"
+              disabled={isSubmitting}
+              value={values.category}
+              onChange={handleChange}
+              className={inputClasses()}
+            >
+              <option value="web">Web Development</option>
+              <option value="mobile">Mobile App</option>
+              <option value="design">UI/UX Design</option>
+              <option value="marketing">Marketing</option>
+            </select>
           </Field>
 
-          <div style={styles.row}>
-            <Field
-              label="Proposed price"
-              error={touched.price ? errors.price : ""}
-            >
-              <div
-                style={{
-                  ...styles.priceWrap,
-                  ...(touched.price && errors.price ? styles.inputError : {}),
-                }}
-              >
-                <span style={styles.priceSymbol}>$</span>
-                <input
-                  style={styles.priceInput}
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="decimal"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, price: true }))}
-                  placeholder="750"
-                />
-              </div>
-            </Field>
+          <Field id="project-budget" label="Budget ($)" required error={errors.budget}>
+            <input
+              id="project-budget"
+              type="number"
+              name="budget"
+              disabled={isSubmitting}
+              value={values.budget}
+              onChange={handleChange}
+              placeholder="5000"
+              aria-invalid={Boolean(errors.budget)}
+              aria-describedby={errors.budget ? 'project-budget-error' : undefined}
+              className={inputClasses(errors.budget)}
+            />
+          </Field>
+        </div>
 
-            <Field
-              label="Estimated duration"
-              error={touched.duration ? errors.duration : ""}
-            >
-              <div
-                style={{
-                  ...styles.durationWrap,
-                  ...(touched.duration && errors.duration ? styles.inputError : {}),
-                }}
-              >
-                <input
-                  style={styles.durationInput}
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  value={durationValue}
-                  onChange={(e) => setDurationValue(e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, duration: true }))}
-                  placeholder="2"
-                />
-                <select
-                  style={styles.durationSelect}
-                  value={durationUnit}
-                  onChange={(e) => setDurationUnit(e.target.value)}
-                >
-                  {DURATION_UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
+        <Field id="project-description" label="Description" required error={errors.description}>
+          <textarea
+            id="project-description"
+            name="description"
+            rows={4}
+            disabled={isSubmitting}
+            value={values.description}
+            onChange={handleChange}
+            placeholder="Briefly describe the project scope and primary deliverables..."
+            aria-invalid={Boolean(errors.description)}
+            aria-describedby={errors.description ? 'project-description-error' : undefined}
+            className={inputClasses(errors.description)}
+          />
+        </Field>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium rounded-lg shadow transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+        >
+          {isSubmitting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
+              <span>Creating Project...</span>
+            </>
+          ) : (
+            <>
+              <span>Submit Project</span>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </>
+          )}
+        </button>
+      </form>
+
+      {createdProject && (
+        <div role="status" aria-live="polite" className="mt-8 pt-6 border-t border-gray-200">
+          <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                <CheckCircle className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+                <span>Project Created Successfully!</span>
               </div>
-            </Field>
+              <button
+                type="button"
+                onClick={() => dispatch({ type: 'RESET_SUCCESS' })}
+                className="text-emerald-600 hover:text-emerald-800 focus:outline-none text-xs font-medium underline"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-emerald-100 space-y-2 text-sm text-gray-700">
+              <Row label="Project ID">
+                <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-800">
+                  {createdProject.id}
+                </span>
+              </Row>
+              <Row label="Name">
+                <span className="font-semibold text-gray-800">{createdProject.name}</span>
+              </Row>
+              <Row label="Category">
+                <span className="capitalize">{createdProject.category}</span>
+              </Row>
+              <Row label="Budget">
+                <span className="font-semibold text-emerald-600">
+                  ${Number(createdProject.budget).toLocaleString()}
+                </span>
+              </Row>
+              <div className="pt-1">
+                <span className="font-medium text-gray-500 block mb-1">Description:</span>
+                <p className="text-gray-600 bg-gray-50 p-2.5 rounded text-xs leading-relaxed">
+                  {createdProject.description}
+                </p>
+              </div>
+            </div>
           </div>
-
-          <button type="submit" style={styles.submitButton} disabled={status === "submitting"}>
-            {status === "submitting" ? (
-              <>
-                <Loader2 size={16} style={{ animation: "spin 0.9s linear infinite" }} />
-                Sending proposal…
-              </>
-            ) : (
-              "Send proposal"
-            )}
-          </button>
-        </form>
-      </div>
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        input::placeholder, textarea::placeholder { color: ${C.placeholder}; }
-        input:focus, textarea:focus, select:focus { outline: 2px solid ${C.accent}; outline-offset: 1px; }
-        button:focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; }
-      `}</style>
+        </div>
+      )}
     </div>
   );
 }
 
-function Field({ label, hint, error, children }) {
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={styles.field}>
-      <div style={styles.labelRow}>
-        <label style={styles.label}>{label}</label>
-        {hint && <span style={styles.hint}>{hint}</span>}
-      </div>
+    <div className="flex justify-between border-b border-gray-100 pb-2">
+      <span className="font-medium text-gray-500">{label}:</span>
       {children}
-      {error && <div style={styles.fieldError}>{error}</div>}
     </div>
   );
 }
-
-const C = {
-  paper: "#FBF9F4",
-  cardBorder: "#DEDACB",
-  ink: "#1E2A38",
-  muted: "#6B7280",
-  placeholder: "#A3A79A",
-  rule: "#DEDACB",
-  accent: "#9C7A3C",
-  accentText: "#FBF9F4",
-  error: "#A6402A",
-  errorBg: "#FBEEEA",
-  success: "#3F6B4F",
-  fieldBg: "#FFFFFE",
-};
-
-const serif = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif";
-const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
-
-const styles = {
-  page: {
-    background: C.paper,
-    minHeight: "100%",
-    padding: "40px 20px",
-    display: "flex",
-    justifyContent: "center",
-    fontFamily: sans,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 560,
-  },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  heading: {
-    fontFamily: serif,
-    fontSize: 28,
-    fontWeight: 500,
-    color: C.ink,
-    margin: "6px 0 0 0",
-    letterSpacing: "-0.01em",
-  },
-  subheading: {
-    fontSize: 14.5,
-    color: C.muted,
-    margin: 0,
-    lineHeight: 1.5,
-    maxWidth: 440,
-  },
-  rule: {
-    height: 1,
-    background: C.rule,
-    margin: "22px 0 26px 0",
-  },
-  field: {
-    marginBottom: 22,
-  },
-  row: {
-    display: "flex",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  labelRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 13.5,
-    fontWeight: 600,
-    color: C.ink,
-  },
-  hint: {
-    fontSize: 12,
-    color: C.muted,
-  },
-  textarea: {
-    width: "100%",
-    background: C.fieldBg,
-    border: `1px solid ${C.cardBorder}`,
-    borderRadius: 4,
-    padding: "12px 14px",
-    fontSize: 14.5,
-    lineHeight: 1.55,
-    color: C.ink,
-    fontFamily: sans,
-    resize: "vertical",
-    boxSizing: "border-box",
-  },
-  priceWrap: {
-    display: "flex",
-    alignItems: "center",
-    background: C.fieldBg,
-    border: `1px solid ${C.cardBorder}`,
-    borderRadius: 4,
-    padding: "0 14px",
-  },
-  priceSymbol: {
-    color: C.muted,
-    fontSize: 14.5,
-    marginRight: 4,
-  },
-  priceInput: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    padding: "11px 0",
-    fontSize: 14.5,
-    color: C.ink,
-    fontFamily: sans,
-    minWidth: 0,
-  },
-  durationWrap: {
-    display: "flex",
-    background: C.fieldBg,
-    border: `1px solid ${C.cardBorder}`,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  durationInput: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    padding: "11px 14px",
-    fontSize: 14.5,
-    color: C.ink,
-    fontFamily: sans,
-    minWidth: 0,
-  },
-  durationSelect: {
-    border: "none",
-    borderLeft: `1px solid ${C.cardBorder}`,
-    background: "transparent",
-    padding: "11px 10px",
-    fontSize: 14.5,
-    color: C.ink,
-    fontFamily: sans,
-  },
-  inputError: {
-    borderColor: C.error,
-  },
-  fieldError: {
-    fontSize: 12.5,
-    color: C.error,
-    marginTop: 6,
-  },
-  errorBanner: {
-    display: "flex",
-    gap: 10,
-    background: C.errorBg,
-    border: `1px solid ${C.error}33`,
-    borderRadius: 4,
-    padding: "12px 14px",
-    marginBottom: 20,
-  },
-  errorBannerTitle: {
-    fontSize: 13.5,
-    fontWeight: 600,
-    color: C.error,
-  },
-  errorBannerBody: {
-    fontSize: 13,
-    color: C.error,
-    marginTop: 2,
-    lineHeight: 1.5,
-  },
-  submitButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    background: C.ink,
-    color: C.accentText,
-    border: "none",
-    borderRadius: 4,
-    padding: "12px 22px",
-    fontSize: 14.5,
-    fontWeight: 600,
-    fontFamily: sans,
-    cursor: "pointer",
-  },
-  secondaryButton: {
-    background: "transparent",
-    color: C.ink,
-    border: `1px solid ${C.cardBorder}`,
-    borderRadius: 4,
-    padding: "10px 18px",
-    fontSize: 14,
-    fontWeight: 600,
-    fontFamily: sans,
-    cursor: "pointer",
-    marginTop: 18,
-  },
-  successWrap: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingTop: 30,
-  },
-  successHeading: {
-    fontFamily: serif,
-    fontSize: 26,
-    fontWeight: 500,
-    color: C.ink,
-    margin: "6px 0 0 0",
-  },
-  successBody: {
-    fontSize: 14.5,
-    color: C.muted,
-    lineHeight: 1.6,
-    margin: 0,
-    maxWidth: 440,
-  },
-};
