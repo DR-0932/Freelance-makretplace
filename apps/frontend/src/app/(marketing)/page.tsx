@@ -4,7 +4,7 @@ import HeroSection from "@/components/marketing/heroSection";
 export default function HomePage() {
   return (
     <main className="flex flex-col min-h-screen p-12">
-      {/* <HeroSection /> */}
+      <HeroSection />
       <BentoGridThirdDemo/>
     </main>
   );
