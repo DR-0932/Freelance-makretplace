@@ -31,3 +31,4 @@ export type SignupInput = z.infer<typeof signup_schema>;
 export type LoginInput = z.infer<typeof login_schema>;
 
 export * from "./project.js"
+export * from "./proposal.js"
