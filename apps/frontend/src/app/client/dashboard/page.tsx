@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ProjectCard from "../freelancer/projectCard";
-import ProjectInfoCard from "../freelancer/projectCard";
+import ProjectInfoCard from "@/components/freelancer/projectCard";
+import CreateProjectSection from "@/components/client/createProjectbutton";
+// --- Adjust these to match your actual backend routes/response shape ---
 const PROJECTS_ENDPOINT = "/api/projects";
 const proposalsEndpoint = (projectId: string) => `/api/projects/${projectId}/proposals`;
 
+// --- Demo mode: flip to false once your backend routes are ready ---
 const USE_DEMO_DATA = true;
 
 interface Project {
@@ -107,7 +109,7 @@ const DEMO_PROPOSALS: Record<string, Proposal[]> = {
   ],
 };
 
-export default function Dashboard() {
+export default function Page() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
 
@@ -195,6 +197,9 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+        
+        <CreateProjectSection/>
+
       </div>
     </main>
   );

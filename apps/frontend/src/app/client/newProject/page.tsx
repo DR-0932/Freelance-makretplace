@@ -1,5 +1,7 @@
+"use client"
 import React, { useReducer, ChangeEvent, FormEvent } from 'react';
 import { AlertCircle, CheckCircle, FolderPlus, ArrowRight, RefreshCw, X } from 'lucide-react';
+import { createProject } from "@/lib/api"; 
 
 type Category = 'Web Development' | 'Mobile App' | 'UI/UX Design' | 'Marketing';
 
@@ -85,6 +87,9 @@ function formReducer(state: FormState, action: FormAction): FormState {
   }
 }
 
+
+
+
 function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {};
   const min = Number(values.budgetMin);
@@ -117,29 +122,7 @@ function validate(values: FormValues): FormErrors {
   return errors;
 }
 
-function createProject(values: FormValues): Promise<CreatedProject> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (Math.random() < 0.25) {
-        reject(new Error('Failed to create project on the server. Please check your network connection and try again.'));
-        return;
-      }
-      resolve({
-        id: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        title: values.title,
-        description: values.description,
-        category: values.category,
-        budgetMin: Number(values.budgetMin),
-        budgetMax: Number(values.budgetMax),
-        deadline: values.deadline,
-        status: 'open',
-        clientName: 'You',
-        proposalCount: 0,
-        createdAt: new Date().toLocaleDateString(),
-      });
-    }, 1000);
-  });
-}
+
 
 interface FieldProps {
   id: string;
@@ -181,7 +164,7 @@ export default function CreateProjectForm() {
     dispatch({ type: 'SET_FIELD', field: name as keyof FormValues, value });
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const validationErrors = validate(values);
@@ -192,7 +175,14 @@ export default function CreateProjectForm() {
 
     dispatch({ type: 'SUBMIT_START' });
     try {
-      const project = await createProject(values);
+      const project = await createProject({
+        title: values.title,
+        description: values.description,
+        category: values.category,
+        budgetMin: Number(values.budgetMin),
+        budgetMax: Number(values.budgetMax),
+        deadline: values.deadline,
+      });
       dispatch({ type: 'SUBMIT_SUCCESS', payload: project });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
@@ -200,7 +190,9 @@ export default function CreateProjectForm() {
     }
   };
 
+
   return (
+
     <div className="max-w-2xl mx-auto my-10 p-6 bg-white rounded-xl shadow-md border border-gray-100">
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
         <FolderPlus className="w-7 h-7 text-indigo-600" aria-hidden="true" />
