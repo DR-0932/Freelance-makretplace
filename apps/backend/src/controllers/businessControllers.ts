@@ -1,4 +1,4 @@
-import { createProjectSchema, getProjectSchema } from "@repo/validation"
+import { createProjectSchema, getProjectSchema, proposalSchema } from "@repo/validation"
 import type {Request ,Response} from "express"
 import { prisma } from "@repo/db";
 import { AuthRequest } from "./middleware/authMiddleware.js";
@@ -70,6 +70,11 @@ export async function getProjects(req: AuthRequest, res: Response): Promise<void
         ...(minBudget !== undefined && { budgetMax: { gte: minBudget } }),
         ...(maxBudget !== undefined && { budgetMin: { lte: maxBudget } }),
       },
+      include:{
+        _count:{
+          select:{proposals:true}
+        }
+      }
     });
     
     const result = projects.map((data) => ({
@@ -90,6 +95,70 @@ export async function getProjects(req: AuthRequest, res: Response): Promise<void
     res.status(500).json({ error: "internal server error" });
   }
 }
+
+
+export async function createProposal(req:AuthRequest,res:Response):Promise<void>{
+  const {projectId} = req.params;
+
+  if(typeof projectId !=="string"){
+    res.status(400).json({error:"invalid prpoject id"});
+    return
+  }
+  const proposal = proposalSchema.safeParse(req.body);
+  if(!proposal.success){
+    res.status(400).json({error:"invalid input"})
+    return;
+  }
+  const {coverLetter,proposedPrice,estimatedDuration} =proposal.data;
+  if(!req.userId){
+    res.status(401).json({error:"not authorazied"})
+    return
+  }
+  try{
+    const user = await prisma.user.findUnique({
+      where:{id:req.userId}
+    })
+    
+    if(!user){
+      res.status(400).json({error:"user not found"})
+      return
+    }
+
+    if (user.role !== "freelancer") {
+      res.status(403).json({ error: "only freelancers can submit proposals" });
+      return;
+    }
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      res.status(404).json({ error: "project not found" });
+      return;
+    }
+
+    if (project.status !== "open") {
+      res.status(400).json({ error: "this project is not open for proposals" });
+      return;
+    }
+        const proposal_data = await prisma.proposal.create({
+      data: {
+        coverLetter,
+        proposedPrice,
+        estimatedDuration:String(estimatedDuration),
+        freelancerId: req.userId,
+        projectId,
+      },
+    });
+    res.status(201).json({ proposal_data });
+
+  }catch(err){
+    console.error(err);
+    res.status(500).json({ error: "internal server error" });
+  }
+
+}
+
 
 
 export async function getProjectProposals(req: AuthRequest, res: Response): Promise<void> {
@@ -148,8 +217,6 @@ export async function getProjectProposals(req: AuthRequest, res: Response): Prom
     res.status(500).json({ error: "internal server error" });
   }
 }
-
-
 
 
 export async function acceptProposal(req: AuthRequest, res: Response): Promise<void> {

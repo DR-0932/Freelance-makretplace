@@ -5,7 +5,7 @@ import "dotenv/config";
 import { signup_schema, login_schema } from "@repo/validation";
 import { prisma } from "@repo/db";
 
-const JWT_SECRET = "just_a_secret" 
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 if (!JWT_SECRET) {
     throw new Error("JWT_SECRET is not set");

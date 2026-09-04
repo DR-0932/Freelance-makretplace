@@ -11,7 +11,6 @@ import {
   MobileNavMenu,
 } from "@/components/ui/resizable-navbar";
 import { useState } from "react";
-import HeroSection from "./marketing/heroSection";
 
 export default function NavbarDemo() {
   const navItems = [
@@ -87,7 +86,6 @@ export default function NavbarDemo() {
           </MobileNavMenu>
         </MobileNav>
       </Navbar>
-      <HeroSection/>
       
       {/* <DummyContent /> */}
 
